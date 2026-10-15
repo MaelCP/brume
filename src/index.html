@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: transparent;
+      overflow: hidden;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    }
+    /* Fond entierement transparent : seul le texte est visible.
+       Le halo blanc garde le noir lisible sur un fond sombre ; retire les
+       `text-shadow` si tu preferes du noir strictement nu. */
+    .barre {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+    }
+    .chevron {
+      color: #000000;
+      font-size: 14px;
+      line-height: 1;
+      text-shadow: 0 0 3px rgba(255, 255, 255, 0.9);
+      cursor: grab;
+      /* Zone de prise plus large que le glyphe, sinon viser 8px est penible. */
+      padding: 4px 6px;
+      margin: -4px -6px;
+    }
+    .chevron:active { cursor: grabbing; }
+    #prompt {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #000000;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      caret-color: #000000;
+      text-shadow: 0 0 3px rgba(255, 255, 255, 0.9);
+    }
+    #reponse {
+      display: none;
+      margin: 0 14px;
+      /* Borne a la fenetre (200px dans tauri.conf.json) : avec un max-height plus
+         grand que la fenetre, la reponse etait coupee au lieu de defiler. */
+      max-height: calc(100vh - 44px);
+      overflow-y: auto;
+      color: #000000;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      text-shadow: 0 0 3px rgba(255, 255, 255, 0.9);
+    }
+  </style>
+</head>
+<body>
+  <div class="barre">
+    <!-- data-tauri-drag-region : le chevron est la poignee de deplacement. -->
+    <span class="chevron" data-tauri-drag-region>&#10095;</span>
+    <!-- Pas de placeholder : au repos, seul le chevron doit se voir. -->
+    <input type="text" id="prompt" autofocus />
+  </div>
+  <div id="reponse"></div>
+
+  <script>
+    const { invoke } = window.__TAURI__.core;
+    const input = document.getElementById("prompt");
+    const reponse = document.getElementById("reponse");
+    let occupe = false;
+
+    async function demander(texte) {
+      if (occupe) return;
+      occupe = true;
+      reponse.style.display = "block";
+      reponse.textContent = "…";
+      try {
+        reponse.textContent = await invoke("interroger_claude", { prompt: texte });
+      } catch (err) {
+        reponse.textContent = "Erreur: " + err;
+      } finally {
+        occupe = false;
+        input.focus();
+      }
+    }
+
+    window.addEventListener("focus", () => input.focus());
+
+    window.addEventListener("keydown", async (e) => {
+      if (e.key === "Escape") {
+        input.value = "";
+        reponse.style.display = "none";
+        await invoke("cacher_fenetre");
+      }
+    });
+
+    input.addEventListener("keydown", (e) => {
+      // Le focus reste dans le champ : fleches et PageUp/PageDown defilent la reponse.
+      const pas = { ArrowDown: 40, ArrowUp: -40, PageDown: 150, PageUp: -150 }[e.key];
+      if (pas) {
+        e.preventDefault();
+        reponse.scrollBy({ top: pas });
+        return;
+      }
+      if (e.key !== "Enter" || input.value.trim() === "") return;
+      const texte = input.value;
+      input.value = "";
+      demander(texte);
+    });
+  </script>
+</body>
+</html>
